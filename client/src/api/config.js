@@ -8,8 +8,8 @@ const api = axios.create({
     headers: {
         'Content-Type': 'application/json',
         'Accept': 'application/json'
-    },
-    withCredentials: true
+    }
+    // Removed withCredentials: true to avoid CORS credential issues
 });
 
 // Add a request interceptor
@@ -96,4 +96,4 @@ api.interceptors.response.use(
     }
 );
 
-export default api; 
+export default api;

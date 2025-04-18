@@ -29,9 +29,8 @@ const TopUsers = () => {
     // Validate each user object
     return data.map(user => ({
       id: user.id || 'N/A',
-      name: user.name || 'Unknown',
-      email: user.email || 'N/A',
-      rollNo: user.rollNo || 'N/A'
+      name: user.name || 'Unknown'
+      // Removed email and rollNo as they are not provided by server.js
     }));
   };
 
@@ -110,8 +109,7 @@ const TopUsers = () => {
             <TableRow>
               <TableCell>User</TableCell>
               <TableCell>Name</TableCell>
-              <TableCell>Email</TableCell>
-              <TableCell>Roll Number</TableCell>
+              {/* Removed Email and Roll Number columns */}
             </TableRow>
           </TableHead>
           <TableBody>
@@ -121,8 +119,6 @@ const TopUsers = () => {
                   <Avatar>{user.name.charAt(0)}</Avatar>
                 </TableCell>
                 <TableCell>{user.name}</TableCell>
-                <TableCell>{user.email}</TableCell>
-                <TableCell>{user.rollNo}</TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -132,4 +128,4 @@ const TopUsers = () => {
   );
 };
 
-export default TopUsers; 
+export default TopUsers;
