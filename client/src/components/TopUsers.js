@@ -21,39 +21,16 @@ const TopUsers = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const validateUserData = (data) => {
-    if (!Array.isArray(data)) {
-      throw new Error('Expected array of users but received different data type');
-    }
-
-    // Validate each user object
-    return data.map(user => ({
-      id: user.id || 'N/A',
-      name: user.name || 'Unknown'
-      // Removed email and rollNo as they are not provided by server.js
-    }));
-  };
-
   const fetchTopUsers = async () => {
     try {
       setLoading(true);
       setError(null);
-      console.log('Fetching users from API...');
       
       const response = await api.get('/users');
-      console.log('Raw API response:', response.data);
-      
-      const validatedData = validateUserData(response.data);
-      console.log('Validated user data:', validatedData);
-      
-      setUsers(validatedData);
+      setUsers(response.data);
     } catch (err) {
-      console.error('Error in fetchTopUsers:', {
-        message: err.message,
-        response: err.response?.data,
-        status: err.response?.status
-      });
-      setError(err.response?.data?.error || 'Failed to fetch top users');
+      console.error('Error in fetchTopUsers:', err);
+      setError('Failed to fetch top users');
     } finally {
       setLoading(false);
     }
@@ -101,24 +78,27 @@ const TopUsers = () => {
   return (
     <Box>
       <Typography variant="h4" gutterBottom>
-        Users ({users.length})
+        Top 5 Users by Comment Count
       </Typography>
       <TableContainer component={Paper}>
         <Table>
           <TableHead>
             <TableRow>
+              <TableCell>Rank</TableCell>
               <TableCell>User</TableCell>
               <TableCell>Name</TableCell>
-              {/* Removed Email and Roll Number columns */}
+              <TableCell align="right">Comment Count</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
-            {users.map((user) => (
+            {users.map((user, index) => (
               <TableRow key={user.id}>
+                <TableCell>{index + 1}</TableCell>
                 <TableCell>
                   <Avatar>{user.name.charAt(0)}</Avatar>
                 </TableCell>
                 <TableCell>{user.name}</TableCell>
+                <TableCell align="right">{user.commentCount}</TableCell>
               </TableRow>
             ))}
           </TableBody>

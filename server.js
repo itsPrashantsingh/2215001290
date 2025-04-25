@@ -1,33 +1,31 @@
-const express = require('express');
-const cors = require('cors');
-const axios = require('axios');
-require('dotenv').config();
+import express from 'express';
+import dotenv from 'dotenv';
+import cors from 'cors';
+import axios from 'axios';
+
+dotenv.config();
 
 const app = express();
-const port = process.env.PORT || 5000;
+const port = process.env.PORT || 8080;
+const BASE_URL = process.env.API_BASE_URL || 'http://20.244.56.144/evaluation-service';
 
-// Middleware
+// CORS Configuration
+const corsOptions = {
+    origin: ['http://localhost:5173', 'http://localhost:3000'],
+    methods: ['GET', 'POST'],
+    credentials: true,
+    optionsSuccessStatus: 200
+};
+
+app.use(cors(corsOptions));
 app.use(express.json());
-app.use(cors({
-    origin: 'http://localhost:3000',
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-    credentials: true
-}));
 
-// Logging middleware
-app.use((req, res, next) => {
-    console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
-    console.log('Request Headers:', req.headers);
-    res.on('finish', () => {
-        console.log('Response Status:', res.statusCode);
-        console.log('Response Headers:', res.getHeaders());
-    });
-    next();
-});
+// Auth token cache
+let authToken = null;
+let tokenExpiry = null;
 
-// Environment variables
-const AUTH_CREDENTIALS = {
+// Auth payload from environment
+const AUTH_PAYLOAD = {
     email: process.env.EMAIL,
     name: process.env.NAME,
     rollNo: process.env.ROLL_NO,
@@ -36,148 +34,93 @@ const AUTH_CREDENTIALS = {
     clientSecret: process.env.CLIENT_SECRET
 };
 
-const BASE_URL = process.env.BASE_URL || 'http://20.244.56.144/evaluation-service';
-
-// Cache for auth token
-let authToken = null;
-let tokenExpiry = null;
-
-// Helper function to get auth token
+// Fetch auth token
 async function getAuthToken() {
-    try {
-        // Check if we have a valid cached token
-        if (authToken && tokenExpiry && Date.now() < tokenExpiry) {
-            return authToken;
+    if (authToken && tokenExpiry && Date.now() < tokenExpiry) return authToken;
+    const res = await axios.post(`${BASE_URL}/auth`, AUTH_PAYLOAD);
+    authToken = res.data.access_token;
+    tokenExpiry = Date.now() + ((res.data.expires_in - 300) * 1000);
+    return authToken;
+}
+
+// Fetch data from API with retry logic
+async function callApi(url, retries = 3) {
+    for (let i = 0; i < retries; i++) {
+        try {
+            const token = await getAuthToken();
+            const res = await axios.get(url, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            return res.data;
+        } catch (err) {
+            if (i === retries - 1) throw err;
+            await new Promise(r => setTimeout(r, 1000 * (i + 1)));
         }
-
-        console.log('Fetching new auth token...');
-        const response = await axios.post(`${BASE_URL}/auth`, AUTH_CREDENTIALS);
-
-        if (!response.data || !response.data.access_token) {
-            throw new Error('Invalid authentication response');
-        }
-
-        authToken = response.data.access_token;
-        // Set token expiry to 5 minutes before actual expiry
-        tokenExpiry = Date.now() + ((response.data.expires_in - 300) * 1000);
-
-        return authToken;
-    } catch (error) {
-        console.error('Authentication error:', error.message);
-        if (error.response) {
-            console.error('Response data:', error.response.data);
-            console.error('Response status:', error.response.status);
-        }
-        throw new Error('Failed to authenticate with the service');
     }
 }
 
-// Helper function to fetch data from API
-async function fetchData(endpoint) {
-    try {
-        const token = await getAuthToken();
-        const response = await axios.get(`${BASE_URL}${endpoint}`, {
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-            }
-        });
-
-        console.log(`Raw data from external API ${endpoint}:`, response.data);
-
-        return response.data;
-    } catch (error) {
-        console.error(`Error fetching data from ${endpoint}:`, error.message);
-        if (error.response) {
-            console.error('Response data:', error.response.data);
-            console.error('Response status:', error.response.status);
-        }
-        throw error;
-    }
-}
-
-// Helper function to normalize response data
-function normalizeData(data, type) {
-    console.log(`Normalizing data for type ${type}:`, data);
-
-    if (Array.isArray(data)) {
-        return data;
-    }
-
-    switch (type) {
-        case 'users':
-            if (data && data.users) {
-                return Object.entries(data.users).map(([id, name]) => ({
-                    id: parseInt(id),
-                    name
-                })).sort((a, b) => a.id - b.id);
-            }
-            break;
-        case 'posts':
-            // Posts endpoint returns array directly, so just return data if array
-            if (Array.isArray(data)) {
-                return data;
-            }
-            break;
-        case 'comments':
-            // Comments endpoint returns array directly, so just return data if array
-            if (Array.isArray(data)) {
-                return data;
-            }
-            break;
-    }
-
-    throw new Error(`Invalid ${type} data format`);
-}
-
-// Get all users
+// /users endpoint
 app.get('/users', async (req, res) => {
     try {
-        const data = await fetchData('/users');
-        const normalizedData = normalizeData(data, 'users');
-        res.json(normalizedData);
-    } catch (error) {
-        console.error('Error in /users endpoint:', error);
-        if (error.response && error.response.status === 403) {
-            res.status(502).json({ error: 'External API returned 403 Forbidden' });
-        } else {
-            res.status(500).json({ error: 'Failed to fetch users' });
+        const userData = await callApi(`${BASE_URL}/users`);
+        const users = Object.entries(userData.users || {}).map(([id, name]) => ({ id, name, commentCount: 0 })).slice(0, 10);
+
+        for (const user of users) {
+            try {
+                const posts = (await callApi(`${BASE_URL}/users/${user.id}/posts`)).posts?.slice(0, 5) || [];
+                for (const post of posts) {
+                    try {
+                        const comments = (await callApi(`${BASE_URL}/posts/${post.id}/comments`)).comments || [];
+                        user.commentCount += comments.length;
+                    } catch {}
+                }
+            } catch {}
         }
+
+        const topUsers = users.sort((a, b) => b.commentCount - a.commentCount).slice(0, 5);
+        res.json(topUsers);
+    } catch (err) {
+        console.error('/users error:', err.message);
+        res.status(500).json({ error: 'Failed to fetch users' });
     }
 });
 
-// Get posts for a user
-app.get('/users/:userId/posts', async (req, res) => {
+// /posts endpoint
+app.get('/posts', async (req, res) => {
     try {
-        const { userId } = req.params;
-        const data = await fetchData(`/users/${userId}/posts`);
-        const normalizedData = normalizeData(data, 'posts');
-        res.json(normalizedData);
-    } catch (error) {
-        console.error(`Error in /users/${req.params.userId}/posts endpoint:`, error);
-        res.status(500).json({ error: 'Failed to fetch user posts' });
-    }
-});
+        const type = req.query.type || 'popular';
+        if (!['popular', 'latest'].includes(type)) return res.status(400).json({ error: 'Invalid type parameter' });
 
-// Get comments for a post
-app.get('/posts/:postId/comments', async (req, res) => {
-    try {
-        const { postId } = req.params;
-        const data = await fetchData(`/posts/${postId}/comments`);
-        const normalizedData = normalizeData(data, 'comments');
-        res.json(normalizedData);
-    } catch (error) {
-        console.error(`Error in /posts/${req.params.postId}/comments endpoint:`, error);
-        res.status(500).json({ error: 'Failed to fetch post comments' });
-    }
-});
+        const userData = await callApi(`${BASE_URL}/users`);
+        const allPosts = [];
+        const users = Object.entries(userData.users || {}).slice(0, 5);
 
-// Error handling middleware
-app.use((err, req, res, next) => {
-    console.error('Internal server error:', err);
-    res.status(500).json({ error: 'Internal server error' });
+        for (const [userId, userName] of users) {
+            try {
+                const posts = (await callApi(`${BASE_URL}/users/${userId}/posts`)).posts?.slice(0, 5) || [];
+                for (const post of posts) {
+                    let commentCount = 0;
+                    try {
+                        const comments = (await callApi(`${BASE_URL}/posts/${post.id}/comments`)).comments || [];
+                        commentCount = comments.length;
+                    } catch {}
+                    allPosts.push({ ...post, userId, userName, commentCount });
+                }
+            } catch {}
+        }
+
+        if (type === 'popular') {
+            const maxComments = Math.max(...allPosts.map(p => p.commentCount));
+            return res.json(allPosts.filter(p => p.commentCount === maxComments));
+        }
+
+        res.json(allPosts.sort((a, b) => b.id - a.id).slice(0, 5));
+    } catch (err) {
+        console.error('/posts error:', err.message);
+        res.status(500).json({ error: 'Failed to fetch posts' });
+    }
 });
 
 app.listen(port, () => {
-    console.log(`Server is running on port ${port}`);
-}); 
+    console.log(`Server running on port ${port}`);
+});

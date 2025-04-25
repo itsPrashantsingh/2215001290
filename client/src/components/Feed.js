@@ -1,137 +1,134 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../api/config';
 import {
-  Paper,
-  List,
-  ListItem,
-  ListItemText,
+  Card,
+  CardContent,
   Typography,
   CircularProgress,
   Box,
-  Divider,
-  Select,
-  MenuItem,
-  FormControl,
-  InputLabel,
+  Alert,
+  Button,
+  Grid,
+  Avatar,
+  CardHeader,
+  IconButton
 } from '@mui/material';
+import RefreshIcon from '@mui/icons-material/Refresh';
 
-const API_BASE_URL = 'http://localhost:5000';
+const REFRESH_INTERVAL = 10000; // Refresh every 10 seconds
 
 const Feed = () => {
   const [posts, setPosts] = useState([]);
-  const [selectedPost, setSelectedPost] = useState(null);
-  const [comments, setComments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [selectedUser, setSelectedUser] = useState(null);
+
+  const fetchAllPosts = async () => {
+    try {
+      const response = await api.get('/users');
+      const users = response.data;
+      let allPosts = [];
+      
+      for (const user of users) {
+        const postsResponse = await api.get(`/users/${user.id}/posts`);
+        const userPosts = postsResponse.data.map(post => ({
+          ...post,
+          userName: user.name,
+          timestamp: new Date().getTime() - Math.floor(Math.random() * 1000000) // Simulated timestamp
+        }));
+        allPosts = [...allPosts, ...userPosts];
+      }
+      
+      // Sort posts by timestamp (newest first)
+      return allPosts.sort((a, b) => b.timestamp - a.timestamp);
+    } catch (err) {
+      throw new Error('Failed to fetch posts');
+    }
+  };
+
+  const refreshFeed = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const allPosts = await fetchAllPosts();
+      setPosts(allPosts);
+    } catch (err) {
+      console.error('Error in refreshFeed:', err);
+      setError('Failed to refresh feed');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchUsers = async () => {
-      try {
-        const response = await axios.get(`${API_BASE_URL}/users`);
-        if (response.data.length > 0) {
-          setSelectedUser(response.data[0].id);
-        }
-      } catch (err) {
-        setError(err.response?.data?.error || 'Failed to fetch users');
-        setLoading(false);
-      }
-    };
+    refreshFeed();
 
-    fetchUsers();
+    // Set up real-time updates
+    const interval = setInterval(refreshFeed, REFRESH_INTERVAL);
+    return () => clearInterval(interval);
   }, []);
-
-  useEffect(() => {
-    const fetchPosts = async () => {
-      if (!selectedUser) return;
-
-      try {
-        setLoading(true);
-        const response = await axios.get(`${API_BASE_URL}/users/${selectedUser}/posts`);
-        setPosts(response.data);
-        if (response.data.length > 0) {
-          setSelectedPost(response.data[0].id);
-        }
-        setLoading(false);
-      } catch (err) {
-        setError(err.response?.data?.error || 'Failed to fetch posts');
-        setLoading(false);
-      }
-    };
-
-    fetchPosts();
-  }, [selectedUser]);
-
-  useEffect(() => {
-    const fetchComments = async () => {
-      if (!selectedPost) return;
-
-      try {
-        setLoading(true);
-        const response = await axios.get(`${API_BASE_URL}/posts/${selectedPost}/comments`);
-        setComments(response.data);
-        setLoading(false);
-      } catch (err) {
-        setError(err.response?.data?.error || 'Failed to fetch comments');
-        setLoading(false);
-      }
-    };
-
-    fetchComments();
-  }, [selectedPost]);
-
-  if (loading) {
-    return (
-      <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
-        <CircularProgress />
-      </Box>
-    );
-  }
 
   if (error) {
     return (
-      <Typography color="error" align="center">
-        {error}
-      </Typography>
+      <Box sx={{ mt: 2 }}>
+        <Alert 
+          severity="error" 
+          action={
+            <Button color="inherit" size="small" onClick={refreshFeed}>
+              Retry
+            </Button>
+          }
+        >
+          {error}
+        </Alert>
+      </Box>
     );
   }
 
   return (
     <Box>
-      <Typography variant="h4" gutterBottom>
-        Comments
-      </Typography>
-      <Box mb={3}>
-        <FormControl fullWidth>
-          <InputLabel>Select Post</InputLabel>
-          <Select
-            value={selectedPost || ''}
-            onChange={(e) => setSelectedPost(e.target.value)}
-            label="Select Post"
-          >
-            {posts.map((post) => (
-              <MenuItem key={post.id} value={post.id}>
-                {post.title}
-              </MenuItem>
-            ))}
-          </Select>
-        </FormControl>
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+        <Typography variant="h4">
+          Feed
+        </Typography>
+        <IconButton onClick={refreshFeed} disabled={loading}>
+          <RefreshIcon />
+        </IconButton>
       </Box>
-      <Paper>
-        <List>
-          {comments.map((comment, index) => (
-            <React.Fragment key={comment.id}>
-              <ListItem>
-                <ListItemText
-                  primary={comment.name}
-                  secondary={comment.body}
-                />
-              </ListItem>
-              {index < comments.length - 1 && <Divider />}
-            </React.Fragment>
-          ))}
-        </List>
-      </Paper>
+      
+      {loading && (
+        <Box display="flex" justifyContent="center" my={3}>
+          <CircularProgress />
+        </Box>
+      )}
+      
+      <Grid container spacing={3}>
+        {posts.map((post) => (
+          <Grid item xs={12} key={post.id}>
+            <Card>
+              <CardHeader
+                avatar={
+                  <Avatar>
+                    {post.userName.charAt(0)}
+                  </Avatar>
+                }
+                title={post.userName}
+                subheader={new Date(post.timestamp).toLocaleString()}
+              />
+              <CardContent>
+                <Typography variant="body1">
+                  {post.content}
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+        ))}
+      </Grid>
+      
+      {!loading && posts.length === 0 && (
+        <Alert severity="info">
+          No posts found.
+        </Alert>
+      )}
     </Box>
   );
 };

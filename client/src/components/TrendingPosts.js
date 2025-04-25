@@ -1,57 +1,88 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../api/config';
 import {
   Paper,
-  List,
-  ListItem,
-  ListItemText,
+  Card,
+  CardContent,
   Typography,
   CircularProgress,
   Box,
-  Divider,
+  Alert,
+  Button,
+  Grid,
+  Chip
 } from '@mui/material';
-
-const API_BASE_URL = 'http://localhost:5000';
+import CommentIcon from '@mui/icons-material/Comment';
 
 const TrendingPosts = () => {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [selectedUser, setSelectedUser] = useState(null);
+
+  const fetchAllPosts = async () => {
+    try {
+      const response = await api.get('/users');
+      const users = response.data;
+      let allPosts = [];
+      
+      for (const user of users) {
+        const postsResponse = await api.get(`/users/${user.id}/posts`);
+        const userPosts = postsResponse.data.map(post => ({
+          ...post,
+          userName: user.name
+        }));
+        allPosts = [...allPosts, ...userPosts];
+      }
+      
+      return allPosts;
+    } catch (err) {
+      throw new Error('Failed to fetch posts');
+    }
+  };
+
+  const fetchPostComments = async (postId) => {
+    try {
+      const response = await api.get(`/posts/${postId}/comments`);
+      return response.data.length;
+    } catch (err) {
+      console.error(`Error fetching comments for post ${postId}:`, err);
+      return 0;
+    }
+  };
+
+  const fetchTrendingPosts = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      // Fetch all posts
+      const allPosts = await fetchAllPosts();
+      
+      // Fetch comment counts for each post
+      const postsWithComments = await Promise.all(
+        allPosts.map(async (post) => ({
+          ...post,
+          commentCount: await fetchPostComments(post.id)
+        }))
+      );
+      
+      // Sort by comment count and get posts with maximum comments
+      const sortedPosts = postsWithComments.sort((a, b) => b.commentCount - a.commentCount);
+      const maxComments = sortedPosts[0]?.commentCount || 0;
+      const trendingPosts = sortedPosts.filter(post => post.commentCount === maxComments);
+      
+      setPosts(trendingPosts);
+    } catch (err) {
+      console.error('Error in fetchTrendingPosts:', err);
+      setError('Failed to fetch trending posts');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchUsers = async () => {
-      try {
-        const response = await axios.get(`${API_BASE_URL}/users`);
-        if (response.data.length > 0) {
-          setSelectedUser(response.data[0].id);
-        }
-      } catch (err) {
-        setError(err.response?.data?.error || 'Failed to fetch users');
-        setLoading(false);
-      }
-    };
-
-    fetchUsers();
+    fetchTrendingPosts();
   }, []);
-
-  useEffect(() => {
-    const fetchPosts = async () => {
-      if (!selectedUser) return;
-
-      try {
-        setLoading(true);
-        const response = await axios.get(`${API_BASE_URL}/users/${selectedUser}/posts`);
-        setPosts(response.data);
-        setLoading(false);
-      } catch (err) {
-        setError(err.response?.data?.error || 'Failed to fetch posts');
-        setLoading(false);
-      }
-    };
-
-    fetchPosts();
-  }, [selectedUser]);
 
   if (loading) {
     return (
@@ -63,32 +94,59 @@ const TrendingPosts = () => {
 
   if (error) {
     return (
-      <Typography color="error" align="center">
-        {error}
-      </Typography>
+      <Box sx={{ mt: 2 }}>
+        <Alert 
+          severity="error" 
+          action={
+            <Button color="inherit" size="small" onClick={fetchTrendingPosts}>
+              Retry
+            </Button>
+          }
+        >
+          {error}
+        </Alert>
+      </Box>
+    );
+  }
+
+  if (!posts || posts.length === 0) {
+    return (
+      <Box sx={{ mt: 2 }}>
+        <Alert severity="info">
+          No trending posts found.
+        </Alert>
+      </Box>
     );
   }
 
   return (
     <Box>
       <Typography variant="h4" gutterBottom>
-        Posts
+        Trending Posts
       </Typography>
-      <Paper>
-        <List>
-          {posts.map((post, index) => (
-            <React.Fragment key={post.id}>
-              <ListItem>
-                <ListItemText
-                  primary={post.title}
-                  secondary={post.body}
-                />
-              </ListItem>
-              {index < posts.length - 1 && <Divider />}
-            </React.Fragment>
-          ))}
-        </List>
-      </Paper>
+      <Grid container spacing={3}>
+        {posts.map((post) => (
+          <Grid item xs={12} key={post.id}>
+            <Card>
+              <CardContent>
+                <Typography variant="h6" gutterBottom>
+                  {post.content}
+                </Typography>
+                <Typography color="textSecondary" gutterBottom>
+                  Posted by {post.userName}
+                </Typography>
+                <Box display="flex" alignItems="center" mt={1}>
+                  <Chip
+                    icon={<CommentIcon />}
+                    label={`${post.commentCount} comments`}
+                    color="primary"
+                  />
+                </Box>
+              </CardContent>
+            </Card>
+          </Grid>
+        ))}
+      </Grid>
     </Box>
   );
 };
