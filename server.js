@@ -9,7 +9,7 @@ const app = express();
 const port = process.env.PORT || 8080;
 const BASE_URL = process.env.API_BASE_URL || 'http://20.244.56.144/evaluation-service';
 
-// CORS Configuration
+
 const corsOptions = {
     origin: ['http://localhost:5173', 'http://localhost:3000'],
     methods: ['GET', 'POST'],
@@ -20,11 +20,10 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(express.json());
 
-// Auth token cache
 let authToken = null;
 let tokenExpiry = null;
 
-// Auth payload from environment
+
 const AUTH_PAYLOAD = {
     email: process.env.EMAIL,
     name: process.env.NAME,
@@ -34,7 +33,7 @@ const AUTH_PAYLOAD = {
     clientSecret: process.env.CLIENT_SECRET
 };
 
-// Fetch auth token
+
 async function getAuthToken() {
     if (authToken && tokenExpiry && Date.now() < tokenExpiry) return authToken;
     const res = await axios.post(`${BASE_URL}/auth`, AUTH_PAYLOAD);
@@ -43,7 +42,7 @@ async function getAuthToken() {
     return authToken;
 }
 
-// Fetch data from API with retry logic
+
 async function callApi(url, retries = 3) {
     for (let i = 0; i < retries; i++) {
         try {
