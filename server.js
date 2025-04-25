@@ -7,14 +7,13 @@ dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 8080;
-const BASE_URL = process.env.API_BASE_URL || 'http://20.244.56.144/evaluation-service';
+const BASE_URL = process.env.API_BASE_URL ;
 
 
 const corsOptions = {
     origin: ['http://localhost:5173', 'http://localhost:3000'],
     methods: ['GET', 'POST'],
-    credentials: true,
-    optionsSuccessStatus: 200
+  
 };
 
 app.use(cors(corsOptions));
@@ -43,7 +42,7 @@ async function getAuthToken() {
 }
 
 
-async function callApi(url, retries = 3) {
+async function callApi(url, retries = 5) {
     for (let i = 0; i < retries; i++) {
         try {
             const token = await getAuthToken();
@@ -53,7 +52,7 @@ async function callApi(url, retries = 3) {
             return res.data;
         } catch (err) {
             if (i === retries - 1) throw err;
-            await new Promise(r => setTimeout(r, 1000 * (i + 1)));
+            await new Promise(r => setTimeout(r, 1000 * (i + 1)));// i m creating intervals like 1 2 3
         }
     }
 }

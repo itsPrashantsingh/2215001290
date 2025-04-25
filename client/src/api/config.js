@@ -5,7 +5,7 @@ const api = axios.create({
     baseURL: 'http://localhost:8080', 
     headers: {
         'Content-Type': 'application/json',
-        timeout: 10000,
+       
         'Accept': 'application/json'
     }
 });
@@ -29,8 +29,11 @@ api.interceptors.response.use(
             }
         } else {
             console.error('Network Error:', error.message);
+            
         }
         return Promise.reject(error);
+
+
     }
 );
 
