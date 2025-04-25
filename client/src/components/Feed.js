@@ -15,42 +15,19 @@ import {
 } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
 
-const REFRESH_INTERVAL = 10000; // Refresh every 10 seconds
+const REFRESH_INTERVAL = 10000; // 10 seconds
 
 const Feed = () => {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const fetchAllPosts = async () => {
-    try {
-      const response = await api.get('/users');
-      const users = response.data;
-      let allPosts = [];
-      
-      for (const user of users) {
-        const postsResponse = await api.get(`/users/${user.id}/posts`);
-        const userPosts = postsResponse.data.map(post => ({
-          ...post,
-          userName: user.name,
-          timestamp: new Date().getTime() - Math.floor(Math.random() * 1000000) // Simulated timestamp
-        }));
-        allPosts = [...allPosts, ...userPosts];
-      }
-      
-      // Sort posts by timestamp (newest first)
-      return allPosts.sort((a, b) => b.timestamp - a.timestamp);
-    } catch (err) {
-      throw new Error('Failed to fetch posts');
-    }
-  };
-
   const refreshFeed = async () => {
     try {
       setLoading(true);
       setError(null);
-      const allPosts = await fetchAllPosts();
-      setPosts(allPosts);
+      const response = await api.get('/posts?type=latest');
+      setPosts(response.data);
     } catch (err) {
       console.error('Error in refreshFeed:', err);
       setError('Failed to refresh feed');
@@ -61,8 +38,6 @@ const Feed = () => {
 
   useEffect(() => {
     refreshFeed();
-
-    // Set up real-time updates
     const interval = setInterval(refreshFeed, REFRESH_INTERVAL);
     return () => clearInterval(interval);
   }, []);

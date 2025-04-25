@@ -19,59 +19,12 @@ const TrendingPosts = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const fetchAllPosts = async () => {
-    try {
-      const response = await api.get('/users');
-      const users = response.data;
-      let allPosts = [];
-      
-      for (const user of users) {
-        const postsResponse = await api.get(`/users/${user.id}/posts`);
-        const userPosts = postsResponse.data.map(post => ({
-          ...post,
-          userName: user.name
-        }));
-        allPosts = [...allPosts, ...userPosts];
-      }
-      
-      return allPosts;
-    } catch (err) {
-      throw new Error('Failed to fetch posts');
-    }
-  };
-
-  const fetchPostComments = async (postId) => {
-    try {
-      const response = await api.get(`/posts/${postId}/comments`);
-      return response.data.length;
-    } catch (err) {
-      console.error(`Error fetching comments for post ${postId}:`, err);
-      return 0;
-    }
-  };
-
   const fetchTrendingPosts = async () => {
     try {
       setLoading(true);
       setError(null);
-      
-      // Fetch all posts
-      const allPosts = await fetchAllPosts();
-      
-      // Fetch comment counts for each post
-      const postsWithComments = await Promise.all(
-        allPosts.map(async (post) => ({
-          ...post,
-          commentCount: await fetchPostComments(post.id)
-        }))
-      );
-      
-      // Sort by comment count and get posts with maximum comments
-      const sortedPosts = postsWithComments.sort((a, b) => b.commentCount - a.commentCount);
-      const maxComments = sortedPosts[0]?.commentCount || 0;
-      const trendingPosts = sortedPosts.filter(post => post.commentCount === maxComments);
-      
-      setPosts(trendingPosts);
+      const response = await api.get('/posts?type=popular');
+      setPosts(response.data);
     } catch (err) {
       console.error('Error in fetchTrendingPosts:', err);
       setError('Failed to fetch trending posts');
